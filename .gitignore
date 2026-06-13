@@ -1,0 +1,29 @@
+# Env files — never commit secrets
+.env
+.env.local
+.env.*.local
+
+# Node
+node_modules/
+npm-debug.log*
+
+# React build output
+client/build/
+
+# Terraform state — use remote backend (S3 + DynamoDB)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+tfplan
+
+# K8s secrets — use Sealed Secrets or External Secrets Operator
+k8s/secrets/db-secret.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,57 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ArgoCD Application — Bookstore
+#
+# Prerequisites:
+#   1. Install ArgoCD in the cluster (one-time):
+#        kubectl create namespace argocd
+#        kubectl apply -n argocd \
+#          -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#        kubectl wait -n argocd deployment/argocd-server --for=condition=Available --timeout=120s
+#
+#   2. Replace YOUR_ORG/YOUR_REPO with your actual GitHub repository URL.
+#      If the repo is private, register credentials first:
+#        argocd repo add https://github.com/YOUR_ORG/YOUR_REPO \
+#          --username <github-user> --password <pat-or-app-token>
+#
+#   3. Apply this manifest once:
+#        kubectl apply -f k8s/argocd/application.yaml
+#
+# After this, the CI pipeline commits updated image tags to k8s/kustomization.yaml
+# (using a GITHUB_TOKEN push which does not re-trigger the pipeline).
+# ArgoCD polls the repo every 3 minutes and reconciles the cluster automatically.
+# ─────────────────────────────────────────────────────────────────────────────
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: bookstore
+  namespace: argocd
+  finalizers:
+    # Ensures all managed resources are deleted when this Application is deleted.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/YOUR_ORG/YOUR_REPO   # replace with your repo URL
+    targetRevision: main
+    path: k8s
+    kustomize: {}   # ArgoCD runs `kustomize build k8s/` to render manifests
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: bookstore
+
+  syncPolicy:
+    automated:
+      prune: true       # removes resources deleted from git
+      selfHeal: true    # reverts any manual kubectl changes to match git
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
