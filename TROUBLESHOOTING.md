@@ -909,6 +909,56 @@ Verified the resulting ARN's account ID (`431451850426`) matches `aws sts get-ca
 
 ---
 
+## 30. Frontend/Backend pods — `InvalidImageName`, ArgoCD "synced" but never applying fixes
+
+**Error**
+```
+NAME                          READY   STATUS             RESTARTS   AGE
+backend-58fbf8c6d-kzhxr       0/1     InvalidImageName   0          8h
+backend-58fbf8c6d-npg62       0/1     InvalidImageName   0          8h
+frontend-565ff4456b-fmsdz     0/1     InvalidImageName   0          8h
+frontend-565ff4456b-gkcl2     0/1     InvalidImageName   0          8h
+```
+ArgoCD UI showed `Degraded` / `OutOfSync` even immediately after clicking **Sync**, with `Last Sync: a few seconds ago`.
+
+**Root cause (two layered bugs)**
+
+1. `k8s/kustomization.yaml` had a malformed `newName`: `YOUR_AWS_431451850426.dkr.ecr.us-west-1.amazonaws.com/bookstore-backend` — a half-completed find/replace of an `ACCOUNT_ID` placeholder that left a `YOUR_AWS_` prefix stuck on the front, producing an invalid ECR hostname. It also pinned `newTag: latest`, a tag that no longer exists in ECR (see Issue #24 — the pipeline stopped pushing `latest`; `aws ecr describe-images` showed only the real SHA tag `2eb7c824` in both repos).
+2. Even after fixing and pushing that file, pods didn't change. `k8s/argocd/application.yaml` had `repoURL: https://github.com/KANDUKURIsaikrishna/aws_three_tier_code.git` — a stale placeholder from setup docs that was never swapped for the actual fork (`https://github.com/adarsh0331/aws_three_tier_code.git`, confirmed via `git remote -v`). ArgoCD had been faithfully polling and "successfully syncing" against a **different person's repo** the entire time, so every fix pushed to the real repo was invisible to it.
+
+**Fix**
+
+a. `k8s/kustomization.yaml`:
+```yaml
+images:
+- name: bookstore-backend
+  newName: 431451850426.dkr.ecr.us-west-1.amazonaws.com/bookstore-backend
+  newTag: 2eb7c824
+- name: bookstore-frontend
+  newName: 431451850426.dkr.ecr.us-west-1.amazonaws.com/bookstore-frontend
+  newTag: 2eb7c824
+```
+Verified with `kubectl kustomize k8s/` that the rendered manifest resolved to the correct image string before committing.
+
+b. `k8s/argocd/application.yaml`:
+```yaml
+source:
+  repoURL: https://github.com/adarsh0331/aws_three_tier_code.git   # was KANDUKURIsaikrishna/...
+```
+Editing the file alone doesn't touch the already-applied `Application` object in the cluster — had to re-apply it:
+```bash
+kubectl apply -f k8s/argocd/application.yaml
+```
+After that, `syncPolicy.automated` (with `selfHeal: true`) picked up the corrected repo within seconds and rolled the pods to `Running`.
+
+**Diagnosis tip** — when ArgoCD reports a successful sync but nothing changes in the cluster, check `spec.source.repoURL` on the `Application` object against `git remote -v` in your actual working repo. A "successful" sync against the wrong repo looks identical to a healthy one in the UI.
+
+```bash
+kubectl get application bookstore -n argocd -o jsonpath='{.spec.source.repoURL}'
+```
+
+---
+
 ## Pending / Not Yet Done
 
 | Item | Status | What's needed |
@@ -932,3 +982,5 @@ Verified the resulting ARN's account ID (`431451850426`) matches `aws sts get-ca
 | Semgrep: workflow-level secret + mutable action tags | ✅ Done | `ECR_REGISTRY` scoped to job-level env; all `uses:` pinned to commit SHA — see Issue #28 |
 | Re-pin `aquasecurity/trivy-action@master` SHA periodically | ⚠️ Pending | SHA is frozen at time of Issue #28 fix; re-resolve to pick up future Trivy updates |
 | GitHub Actions OIDC provider missing from AWS account | ✅ Done | Created via `aws iam create-open-id-connect-provider` — see Issue #29 |
+| `kustomization.yaml` malformed image name + wrong ArgoCD `repoURL` | ✅ Done | Fixed placeholder/tag and repoURL, re-applied Application — see Issue #30 |
+| ArgoCD `OutOfSync`: StatefulSet `mysql`, ExternalSecret `db-secret` | ⚠️ Pending | Unrelated pre-existing drift noticed during Issue #30 — not yet investigated |
