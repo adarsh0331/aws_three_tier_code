@@ -116,7 +116,7 @@ module "rds" {
     module.network.private_subnet_ids[5],
   ]
   multi_az                = true
-  backup_retention_period = 7
+  backup_retention_period = 1
   deletion_protection     = false
 }
 
@@ -164,12 +164,11 @@ module "eks" {
     module.network.private_subnet_ids[3],
   ]
 
-  node_instance_type = "t3.medium"
+  node_instance_type = "c7i-flex.large"
   node_min_size      = 1
   node_max_size      = 4
   node_desired_size  = 2
 }
-
 output "eks_cluster_name"      { value = module.eks.cluster_name }
 output "eks_cluster_endpoint"  { value = module.eks.cluster_endpoint }
 output "eks_oidc_provider_arn" { value = module.eks.oidc_provider_arn }

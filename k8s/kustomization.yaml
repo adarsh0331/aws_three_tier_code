@@ -27,8 +27,8 @@ resources:
 # Replace ACCOUNT_ID below after running scripts/bootstrap-tf-state.sh (same account).
 images:
 - name: bookstore-backend
-  newName: YOUR_AWS_ACCOUNT_ID.dkr.ecr.us-west-1.amazonaws.com/bookstore-backend
+  newName: YOUR_AWS_431451850426.dkr.ecr.us-west-1.amazonaws.com/bookstore-backend
   newTag: latest
 - name: bookstore-frontend
-  newName: YOUR_AWS_ACCOUNT_ID.dkr.ecr.us-west-1.amazonaws.com/bookstore-frontend
+  newName: YOUR_AWS_431451850426.dkr.ecr.us-west-1.amazonaws.com/bookstore-frontend
   newTag: latest

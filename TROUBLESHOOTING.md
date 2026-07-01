@@ -830,6 +830,60 @@ While MySQL was broken, rolling updates kept creating new ReplicaSets (each CI d
 
 ---
 
+## 28. CI — Semgrep: 41 blocking findings (workflow-level secret exposure + mutable action tags)
+
+**Error** (from the `sast` job's Semgrep step)
+```
+❯❱ yaml.github-actions.security.gha-workflow-env-secret.gha-workflow-env-secret
+   A secret is exposed in the workflow-level `env:` block...
+   18┆ ECR_REGISTRY:  ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-west-1.amazonaws.com
+
+❯❱ yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+   GitHub Actions step uses a mutable tag or branch reference...
+   36┆ uses: actions/checkout@v4
+   (14 more occurrences across ci-cd.yml and terraform.yml)
+
+Findings: 41 (41 blocking)
+Error: Process completed with exit code 1.
+```
+
+**Root cause (two parts)**
+
+1. `ECR_REGISTRY` was defined in the workflow-level `env:` block and its value interpolates `secrets.AWS_ACCOUNT_ID`. A workflow-level `env:` is inherited by every job and step — including `sast` and `validate`, which run untrusted `pull_request` code and never need the ECR registry at all. Semgrep flags this as unnecessary secret surface area.
+2. Every `uses:` step referenced actions by mutable tag (`@v4`, `@v2`, `@master`, etc.). Tags/branches can be silently repointed by the action's maintainer (or an attacker who compromises their account), which is how the `tj-actions/changed-files` and `reviewdog` supply-chain incidents happened. Semgrep blocks on any non-SHA `uses:` ref.
+
+**Fix**
+
+a. Removed `ECR_REGISTRY` from the workflow-level `env:` in `.github/workflows/ci-cd.yml`; re-added it as a job-level `env:` only on `build-and-push` and `deploy` (the two jobs that actually push to ECR):
+```yaml
+# workflow-level env (top of file) — no longer contains a secret
+env:
+  AWS_REGION:    us-west-1
+  BACKEND_REPO:  bookstore-backend
+  FRONTEND_REPO: bookstore-frontend
+  EKS_CLUSTER:   bookstore-eks
+  K8S_NAMESPACE: bookstore
+
+# job-level env, added to build-and-push and deploy only
+jobs:
+  build-and-push:
+    env:
+      ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-west-1.amazonaws.com
+```
+
+b. Pinned every `uses:` in `ci-cd.yml` and `terraform.yml` to a full 40-character commit SHA (resolved live via `https://api.github.com/repos/<owner>/<repo>/commits/<tag>` — never guessed), keeping the original tag as a trailing comment for readability:
+```yaml
+uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+uses: aquasecurity/trivy-action@df678dbccf677bc6937338d569ba0da18964a8cc # master
+```
+Full list of pins: `actions/checkout` (v4), `gitleaks/gitleaks-action` (v2), `actions/setup-node` (v4), `aws-actions/configure-aws-credentials` (v4), `aws-actions/amazon-ecr-login` (v2), `docker/setup-buildx-action` (v3), `docker/build-push-action` (v6), `aquasecurity/trivy-action` (master), `github/codeql-action/upload-sarif` (v4), `actions/github-script` (v7), `hashicorp/setup-terraform` (v3).
+
+**Note** — pinning `aquasecurity/trivy-action@master` to a SHA freezes it at today's commit; it will no longer auto-follow future `master` updates. Re-resolve and re-pin periodically to pick up Trivy fixes.
+
+**Also noted, no action needed**: the scan output referenced `.github/workflows/main.yml`, which does not exist in the repo (only `ci-cd.yml` and `terraform.yml`) — stale from before the workflow file was renamed.
+
+---
+
 ## Pending / Not Yet Done
 
 | Item | Status | What's needed |
@@ -850,3 +904,5 @@ While MySQL was broken, rolling updates kept creating new ReplicaSets (each CI d
 | ECR immutable tag — `latest` push fails | ✅ Done | Removed `latest` tag push from ci-cd.yml — see Issue #24 |
 | MySQL root password reset + `admin@'%'` | ✅ Done | Reset via `--skip-grant-tables`; `admin@'%'` created — see Issues #25, #26 |
 | MySQL `test` DB + `books` table missing | ✅ Done | Created manually; now automated in `eks_bootstrap.py` Phase 9 — see Issue #27 |
+| Semgrep: workflow-level secret + mutable action tags | ✅ Done | `ECR_REGISTRY` scoped to job-level env; all `uses:` pinned to commit SHA — see Issue #28 |
+| Re-pin `aquasecurity/trivy-action@master` SHA periodically | ⚠️ Pending | SHA is frozen at time of Issue #28 fix; re-resolve to pick up future Trivy updates |
