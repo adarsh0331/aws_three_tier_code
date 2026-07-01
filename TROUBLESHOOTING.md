@@ -884,6 +884,31 @@ Full list of pins: `actions/checkout` (v4), `gitleaks/gitleaks-action` (v2), `ac
 
 ---
 
+## 29. CI — `configure-aws-credentials` fails: no OIDC provider in AWS account
+
+**Error** (from `aws-actions/configure-aws-credentials` step, retried 12 times before failing)
+```
+Assuming role with OIDC
+... (repeated 12x)
+Error: Could not assume role with OIDC: No OpenIDConnect provider found in your account for https://token.actions.githubusercontent.com
+```
+
+**Root cause**  
+`main.tf` creates `aws_iam_role.github_oidc` with a trust policy that federates on `arn:aws:iam::<account>:oidc-provider/token.actions.githubusercontent.com` — but the OIDC **provider** itself is not a Terraform resource. [main.tf:176-182](main.tf#L176-L182) documents it as a one-time manual prerequisite (`aws iam create-open-id-connect-provider ...`) that must be run outside Terraform. `aws iam list-open-id-connect-providers` showed only the EKS cluster's own OIDC provider (`oidc.eks.us-west-1.amazonaws.com/id/...`) — the GitHub Actions one was never created, or was removed in a prior `terraform destroy`/account cleanup, since deleting the *role* doesn't touch the *provider* and vice versa — they're independent resources.
+
+**Fix**
+```bash
+aws iam create-open-id-connect-provider \
+  --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com \
+  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+```
+Verified the resulting ARN's account ID (`431451850426`) matches `aws sts get-caller-identity`, so the existing `bookstore-github-oidc-role` trust policy needed no changes — it just needed the provider to exist.
+
+**Note** — this thumbprint is GitHub's well-known root CA thumbprint for `token.actions.githubusercontent.com`, documented in `main.tf`'s own comment and in AWS's/GitHub's official OIDC setup docs. It is not something to guess per-account.
+
+---
+
 ## Pending / Not Yet Done
 
 | Item | Status | What's needed |
@@ -906,3 +931,4 @@ Full list of pins: `actions/checkout` (v4), `gitleaks/gitleaks-action` (v2), `ac
 | MySQL `test` DB + `books` table missing | ✅ Done | Created manually; now automated in `eks_bootstrap.py` Phase 9 — see Issue #27 |
 | Semgrep: workflow-level secret + mutable action tags | ✅ Done | `ECR_REGISTRY` scoped to job-level env; all `uses:` pinned to commit SHA — see Issue #28 |
 | Re-pin `aquasecurity/trivy-action@master` SHA periodically | ⚠️ Pending | SHA is frozen at time of Issue #28 fix; re-resolve to pick up future Trivy updates |
+| GitHub Actions OIDC provider missing from AWS account | ✅ Done | Created via `aws iam create-open-id-connect-provider` — see Issue #29 |
