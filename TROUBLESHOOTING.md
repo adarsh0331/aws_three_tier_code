@@ -880,7 +880,7 @@ Full list of pins: `actions/checkout` (v4), `gitleaks/gitleaks-action` (v2), `ac
 
 **Note** — pinning `aquasecurity/trivy-action@master` to a SHA freezes it at today's commit; it will no longer auto-follow future `master` updates. Re-resolve and re-pin periodically to pick up Trivy fixes.
 
-**Also noted, no action needed**: the scan output referenced `.github/workflows/main.yml`, which does not exist in the repo (only `ci-cd.yml` and `terraform.yml`) — stale from before the workflow file was renamed.
+**Correction (second scan)** — the findings did not fully clear on re-run; `.github/workflows/main.yml` still showed all 18. It was not stale/nonexistent as first assumed — it was a real git-tracked duplicate of `ci-cd.yml`'s pre-fix content (`git log` shows both added in the same commit, `9627fbe`). GitHub Actions would run both workflows in parallel on every push, and `main.yml` never received the SHA-pinning/env-scoping fix. Deleted it (`git rm .github/workflows/main.yml`) since `ci-cd.yml` (name: `DevSecOps Pipeline`) already covers the same triggers and jobs.
 
 ---
 
