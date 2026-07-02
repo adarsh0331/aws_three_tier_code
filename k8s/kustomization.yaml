@@ -28,7 +28,7 @@ resources:
 images:
 - name: bookstore-backend
   newName: 431451850426.dkr.ecr.us-west-1.amazonaws.com/bookstore-backend
-  newTag: 770ed1a8
+  newTag: d04b1d09
 - name: bookstore-frontend
   newName: 431451850426.dkr.ecr.us-west-1.amazonaws.com/bookstore-frontend
-  newTag: 770ed1a8
+  newTag: d04b1d09
