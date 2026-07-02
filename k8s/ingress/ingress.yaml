@@ -11,11 +11,11 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - bookstore.b17facebook.xyz
-        - api.bookstore.b17facebook.xyz
+        - bookstore.maheshdev.xyz
+        - api.bookstore.maheshdev.xyz
       secretName: bookstore-tls
   rules:
-    - host: bookstore.b17facebook.xyz
+    - host: bookstore.maheshdev.xyz
       http:
         paths:
           - path: /
@@ -25,7 +25,7 @@ spec:
                 name: frontend-service
                 port:
                   number: 80
-    - host: api.bookstore.b17facebook.xyz
+    - host: api.bookstore.maheshdev.xyz
       http:
         paths:
           - path: /
